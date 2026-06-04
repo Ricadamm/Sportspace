@@ -8,6 +8,7 @@ import {
   addBusinessOrder,
   upsertRevenueRow,
 } from '@/lib/db-business';
+import { createNotifications } from '@/lib/notifications';
 
 function fmtTime(t) {
   if (!t) return '';
@@ -74,9 +75,9 @@ export async function POST(request) {
     // Mirror to business DB
     try {
       const courts = await query(
-        `SELECT c.*, o.business_db_name, u.full_name, u.email, u.phone
+        `SELECT c.*, o.business_db_name, o.user_id AS owner_user_id, u.full_name, u.email, u.phone
          FROM courts c
-         LEFT JOIN owners o ON o.user_id = c.owner_id
+         LEFT JOIN owners o ON o.id = c.owner_id
          LEFT JOIN users u ON u.id = ?
          WHERE c.id = ?`,
         [user.id, court_id]
@@ -85,34 +86,59 @@ export async function POST(request) {
       if (courts.length > 0) {
         const court = courts[0];
         if (court.business_db_name) {
-          const custId = await upsertBusinessCustomer(
-            court.business_db_name,
-            user.id,
-            court.full_name,
-            court.email,
-            court.phone,
-            1,
-            total_price
-          );
+          try {
+            const custId = await upsertBusinessCustomer(
+              court.business_db_name,
+              user.id,
+              court.full_name,
+              court.email,
+              court.phone,
+              1,
+              total_price
+            );
 
-          await addBusinessOrder(court.business_db_name, {
-            platformBookingId: bookingId,
-            productId: court_id,
-            customerId: custId,
-            bookingDate: booking_date,
-            startTime: start_time,
-            endTime: end_time,
-            durationHours,
-            totalPrice: total_price,
-            status: 'pending',
-            notes: notes || null,
-          });
+            await addBusinessOrder(court.business_db_name, {
+              platformBookingId: bookingId,
+              productId: court_id,
+              customerId: custId,
+              bookingDate: booking_date,
+              startTime: start_time,
+              endTime: end_time,
+              durationHours,
+              totalPrice: total_price,
+              status: 'pending',
+              notes: notes || null,
+            });
 
-          await upsertRevenueRow(court.business_db_name, booking_date, total_price, false);
+            await upsertRevenueRow(court.business_db_name, booking_date, total_price, false);
+          } catch (bizErr) {
+            console.error('Business DB mirror error (non-fatal):', bizErr);
+          }
         }
+
+        await createNotifications([
+          {
+            userId: user.id,
+            actorId: court.owner_user_id,
+            type: 'booking_created',
+            title: 'Booking request sent',
+            message: `${court.name} is waiting for confirmation on ${booking_date} at ${fmtTime(start_time)}.`,
+            linkUrl: '/dashboard/customer',
+            metadata: { booking_id: bookingId, court_id, status: 'pending' },
+          },
+          court.owner_user_id && {
+            userId: court.owner_user_id,
+            actorId: user.id,
+            type: 'booking_created',
+            title: 'New booking request',
+            message: `${court.full_name} requested ${court.name} on ${booking_date} at ${fmtTime(start_time)}.`,
+            linkUrl: '/dashboard/owner',
+            metadata: { booking_id: bookingId, court_id, status: 'pending' },
+          },
+        ]);
       }
-    } catch (bizErr) {
-      console.error('Business DB mirror error (non-fatal):', bizErr);
+    } catch (notificationErr) {
+      console.error('Booking notification error (non-fatal):', notificationErr);
     }
 
     return NextResponse.json({ booking_id: bookingId }, { status: 201 });
@@ -143,7 +169,7 @@ export async function GET(request) {
               o.business_name
        FROM bookings b
        LEFT JOIN courts c ON c.id = b.court_id
-       LEFT JOIN owners o ON o.user_id = c.owner_id
+       LEFT JOIN owners o ON o.id = c.owner_id
        WHERE b.user_id = ?
        ORDER BY b.booking_date DESC, b.start_time DESC`,
       [userId]

@@ -8,6 +8,9 @@ export default function Navbar() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -20,6 +23,12 @@ export default function Navbar() {
       const res = await fetch('/api/auth/me');
       const data = await res.json();
       setUser(data.user);
+      if (data.user) {
+        fetchNotifications();
+      } else {
+        setNotifications([]);
+        setUnreadCount(0);
+      }
     } catch (_e) {
       setUser(null);
     } finally {
@@ -27,9 +36,39 @@ export default function Navbar() {
     }
   }
 
+  async function fetchNotifications() {
+    try {
+      const res = await fetch('/api/notifications?limit=8');
+      const data = await res.json();
+      if (res.ok) {
+        setNotifications(data.notifications || []);
+        setUnreadCount(Number(data.unread_count || 0));
+      }
+    } catch (_e) {}
+  }
+
+  async function markAllNotificationsRead() {
+    await fetch('/api/notifications', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mark_all_read: true }),
+    });
+    fetchNotifications();
+  }
+
+  async function openNotification(notification) {
+    await fetch(`/api/notifications/${notification.id}`, { method: 'PATCH' });
+    setNotificationOpen(false);
+    fetchNotifications();
+    if (notification.link_url) router.push(notification.link_url);
+  }
+
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
     setUser(null);
+    setNotifications([]);
+    setUnreadCount(0);
+    setNotificationOpen(false);
     router.push('/');
   }
 
@@ -120,6 +159,121 @@ export default function Navbar() {
                     </Link>
                   </>
                 )}
+                <div style={{ position: 'relative' }}>
+                  <button
+                    onClick={() => setNotificationOpen((open) => !open)}
+                    title="Notifications"
+                    aria-label="Notifications"
+                    style={{
+                      width: '34px',
+                      height: '34px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--navy-border)',
+                      background: notificationOpen ? 'var(--navy-mid)' : 'transparent',
+                      color: 'var(--text)',
+                      cursor: 'pointer',
+                      fontWeight: 800,
+                      position: 'relative',
+                    }}
+                  >
+                    !
+                    {unreadCount > 0 && (
+                      <span style={{
+                        position: 'absolute',
+                        top: '-6px',
+                        right: '-6px',
+                        minWidth: '18px',
+                        height: '18px',
+                        padding: '0 5px',
+                        borderRadius: '999px',
+                        background: 'var(--lime)',
+                        color: 'var(--navy)',
+                        fontSize: '0.68rem',
+                        fontWeight: 800,
+                        lineHeight: '18px',
+                        border: '1px solid var(--navy-card)',
+                      }}>
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
+                  </button>
+
+                  {notificationOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      right: 0,
+                      top: '42px',
+                      width: '340px',
+                      maxWidth: 'calc(100vw - 32px)',
+                      background: 'var(--navy-card)',
+                      border: '1px solid var(--navy-border)',
+                      borderRadius: '8px',
+                      boxShadow: '0 18px 40px rgba(0,0,0,0.35)',
+                      overflow: 'hidden',
+                      zIndex: 200,
+                    }}>
+                      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--navy-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                        <div>
+                          <div style={{ color: 'var(--white)', fontWeight: 700, fontSize: '0.9rem' }}>Notifications</div>
+                          <div style={{ color: 'var(--muted)', fontSize: '0.74rem' }}>{unreadCount} unread</div>
+                        </div>
+                        {notifications.length > 0 && (
+                          <button
+                            onClick={markAllNotificationsRead}
+                            style={{ background: 'transparent', border: 'none', color: 'var(--blue-light)', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            Mark all read
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
+                        {notifications.length === 0 ? (
+                          <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: '0.85rem' }}>
+                            No notifications yet.
+                          </div>
+                        ) : (
+                          notifications.map((notification) => (
+                            <button
+                              key={notification.id}
+                              onClick={() => openNotification(notification)}
+                              style={{
+                                width: '100%',
+                                textAlign: 'left',
+                                padding: '12px 14px',
+                                border: 'none',
+                                borderBottom: '1px solid rgba(30,45,69,0.55)',
+                                background: notification.is_read ? 'transparent' : 'rgba(37,99,235,0.1)',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <div style={{ display: 'flex', gap: '10px' }}>
+                                <span style={{
+                                  width: '8px',
+                                  height: '8px',
+                                  borderRadius: '50%',
+                                  background: notification.is_read ? 'var(--navy-border)' : 'var(--lime)',
+                                  marginTop: '6px',
+                                  flexShrink: 0,
+                                }} />
+                                <span>
+                                  <span style={{ display: 'block', color: 'var(--white)', fontWeight: 700, fontSize: '0.84rem', marginBottom: '3px' }}>
+                                    {notification.title}
+                                  </span>
+                                  <span style={{ display: 'block', color: 'var(--muted)', fontSize: '0.78rem', lineHeight: 1.35 }}>
+                                    {notification.message}
+                                  </span>
+                                  <span style={{ display: 'block', color: 'var(--blue-light)', fontSize: '0.7rem', marginTop: '6px' }}>
+                                    {new Date(notification.created_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' })}
+                                  </span>
+                                </span>
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '8px' }}>
                   <div className="user-badge" title={user.full_name}>
                     {user.full_name?.charAt(0).toUpperCase() || 'U'}
@@ -185,6 +339,50 @@ export default function Navbar() {
             <Link href="/browse" onClick={() => setMenuOpen(false)} style={{ color: 'var(--text)', textDecoration: 'none', padding: '8px 4px', fontSize: '0.9rem' }}>Browse Courts</Link>
             {user && dashboardLink && (
               <Link href={dashboardLink} onClick={() => setMenuOpen(false)} style={{ color: 'var(--text)', textDecoration: 'none', padding: '8px 4px', fontSize: '0.9rem' }}>Dashboard</Link>
+            )}
+            {user && (
+              <button
+                onClick={() => setNotificationOpen((open) => !open)}
+                style={{ color: 'var(--text)', background: 'none', border: 'none', textAlign: 'left', padding: '8px 4px', fontSize: '0.9rem', cursor: 'pointer' }}
+              >
+                Notifications{unreadCount > 0 ? ` (${unreadCount})` : ''}
+              </button>
+            )}
+            {user && notificationOpen && (
+              <div style={{ background: 'var(--navy-mid)', border: '1px solid var(--navy-border)', borderRadius: '8px', overflow: 'hidden', margin: '4px 0 8px' }}>
+                <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--navy-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--white)', fontWeight: 700, fontSize: '0.86rem' }}>{unreadCount} unread</span>
+                  {notifications.length > 0 && (
+                    <button onClick={markAllNotificationsRead} style={{ background: 'transparent', border: 'none', color: 'var(--blue-light)', fontSize: '0.78rem', fontWeight: 700 }}>
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+                {notifications.length === 0 ? (
+                  <div style={{ padding: '18px 12px', color: 'var(--muted)', fontSize: '0.84rem' }}>No notifications yet.</div>
+                ) : (
+                  notifications.map((notification) => (
+                    <button
+                      key={notification.id}
+                      onClick={() => {
+                        setMenuOpen(false);
+                        openNotification(notification);
+                      }}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '10px 12px',
+                        border: 'none',
+                        borderBottom: '1px solid rgba(30,45,69,0.55)',
+                        background: notification.is_read ? 'transparent' : 'rgba(37,99,235,0.12)',
+                      }}
+                    >
+                      <span style={{ display: 'block', color: 'var(--white)', fontWeight: 700, fontSize: '0.82rem' }}>{notification.title}</span>
+                      <span style={{ display: 'block', color: 'var(--muted)', fontSize: '0.76rem', lineHeight: 1.35 }}>{notification.message}</span>
+                    </button>
+                  ))
+                )}
+              </div>
             )}
             {user?.role === 'admin' && (
               <>

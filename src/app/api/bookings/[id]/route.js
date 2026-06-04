@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth';
 import { query } from '@/lib/db';
 import { addBusinessOrder, upsertRevenueRow } from '@/lib/db-business';
+import { createNotifications, formatBookingDate, formatBookingTime } from '@/lib/notifications';
 
 async function getUser() {
   const cookieStore = cookies();
@@ -29,10 +30,12 @@ export async function PATCH(request, { params }) {
 
     // Fetch the booking
     const bookings = await query(
-      `SELECT b.*, c.owner_id, o.user_id AS owner_user_id, o.business_db_name
+      `SELECT b.*, c.name AS court_name, c.owner_id, o.user_id AS owner_user_id,
+              o.business_db_name, u.full_name AS customer_name
        FROM bookings b
        LEFT JOIN courts c ON c.id = b.court_id
        LEFT JOIN owners o ON o.id = c.owner_id
+       LEFT JOIN users u ON u.id = b.user_id
        WHERE b.id = ? LIMIT 1`,
       [id]
     );
@@ -53,6 +56,43 @@ export async function PATCH(request, { params }) {
     }
 
     await query(`UPDATE bookings SET status = ? WHERE id = ?`, [status, id]);
+
+    if (booking.status !== status) {
+      const bookingDate = formatBookingDate(booking.booking_date);
+      const bookingTime = formatBookingTime(booking.start_time);
+      const actorId = user.id;
+      const customerMessage = {
+        confirmed: `Your booking for ${booking.court_name} on ${bookingDate} at ${bookingTime} was confirmed.`,
+        cancelled: `Your booking for ${booking.court_name} on ${bookingDate} at ${bookingTime} was cancelled.`,
+        pending: `Your booking for ${booking.court_name} was moved back to pending review.`,
+      }[status];
+      const ownerMessage = {
+        confirmed: `${booking.customer_name}'s booking for ${booking.court_name} was confirmed.`,
+        cancelled: `${booking.customer_name}'s booking for ${booking.court_name} was cancelled.`,
+        pending: `${booking.customer_name}'s booking for ${booking.court_name} is pending again.`,
+      }[status];
+
+      await createNotifications([
+        String(booking.user_id) !== String(actorId) && {
+          userId: booking.user_id,
+          actorId,
+          type: 'booking_status',
+          title: `Booking ${status}`,
+          message: customerMessage,
+          linkUrl: '/dashboard/customer',
+          metadata: { booking_id: Number(id), court_id: booking.court_id, status },
+        },
+        booking.owner_user_id && String(booking.owner_user_id) !== String(actorId) && {
+          userId: booking.owner_user_id,
+          actorId,
+          type: 'booking_status',
+          title: `Booking ${status}`,
+          message: ownerMessage,
+          linkUrl: '/dashboard/owner',
+          metadata: { booking_id: Number(id), court_id: booking.court_id, status },
+        },
+      ]);
+    }
 
     // Mirror to business DB
     if (booking.business_db_name) {

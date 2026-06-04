@@ -87,6 +87,24 @@ CREATE TABLE IF NOT EXISTS reviews (
     FOREIGN KEY (user_id)  REFERENCES users(id)  ON DELETE CASCADE
 );
 
+-- NOTIFICATIONS
+CREATE TABLE IF NOT EXISTS notifications (
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    user_id    INT          NOT NULL,
+    actor_id   INT,
+    type       VARCHAR(50)  NOT NULL,
+    title      VARCHAR(160) NOT NULL,
+    message    TEXT         NOT NULL,
+    link_url   VARCHAR(255),
+    metadata   JSON,
+    read_at    TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id)  REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_notifications_user_created (user_id, created_at),
+    INDEX idx_notifications_user_read (user_id, read_at)
+);
+
 -- ── SEED: Users ─────────────────────────────────────────────
 -- Passwords are SHA-256 hashes. Plain text:
 --   admin@sportspace.com  -> admin123
@@ -118,14 +136,14 @@ CREATE TABLE IF NOT EXISTS reviews (
 -- ─────────────────────────────────────────────────────────────
 INSERT INTO users (full_name, email, password_hash, role, phone) VALUES
 ('Admin SportSpace',  'admin@sportspace.com',  '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'admin',    '081200000000'),
-('Budi Santoso',      'budi@example.com',       '9b8769a4a742959a2d0298c36fb70623f2a2d34a31750b9b7574e5eda0c42fc8', 'owner',    '081211111111'),
-('Rina Wijaya',       'rina@example.com',       '9b8769a4a742959a2d0298c36fb70623f2a2d34a31750b9b7574e5eda0c42fc8', 'owner',    '081222222222'),
-('Arief Nugroho',     'arief@example.com',      '9b8769a4a742959a2d0298c36fb70623f2a2d34a31750b9b7574e5eda0c42fc8', 'owner',    '081233333333'),
-('Dani Kusuma',       'dani@example.com',       '9b8769a4a742959a2d0298c36fb70623f2a2d34a31750b9b7574e5eda0c42fc8', 'customer', '081244444444'),
-('Siti Rahayu',       'siti@example.com',       '9b8769a4a742959a2d0298c36fb70623f2a2d34a31750b9b7574e5eda0c42fc8', 'customer', '081255555555'),
-('Fajar Prasetyo',    'fajar@example.com',      '9b8769a4a742959a2d0298c36fb70623f2a2d34a31750b9b7574e5eda0c42fc8', 'customer', '081266666666'),
-('Maya Indah',        'maya@example.com',       '9b8769a4a742959a2d0298c36fb70623f2a2d34a31750b9b7574e5eda0c42fc8', 'customer', '081277777777'),
-('Rizky Maulana',     'rizky@example.com',      '9b8769a4a742959a2d0298c36fb70623f2a2d34a31750b9b7574e5eda0c42fc8', 'customer', '081288888888');
+('Budi Santoso',      'budi@example.com',       '9b8769a4a742959a2d0298c36fb70623f2dfacda8436237df08d8dfd5b37374c', 'owner',    '081211111111'),
+('Rina Wijaya',       'rina@example.com',       '9b8769a4a742959a2d0298c36fb70623f2dfacda8436237df08d8dfd5b37374c', 'owner',    '081222222222'),
+('Arief Nugroho',     'arief@example.com',      '9b8769a4a742959a2d0298c36fb70623f2dfacda8436237df08d8dfd5b37374c', 'owner',    '081233333333'),
+('Dani Kusuma',       'dani@example.com',       '9b8769a4a742959a2d0298c36fb70623f2dfacda8436237df08d8dfd5b37374c', 'customer', '081244444444'),
+('Siti Rahayu',       'siti@example.com',       '9b8769a4a742959a2d0298c36fb70623f2dfacda8436237df08d8dfd5b37374c', 'customer', '081255555555'),
+('Fajar Prasetyo',    'fajar@example.com',      '9b8769a4a742959a2d0298c36fb70623f2dfacda8436237df08d8dfd5b37374c', 'customer', '081266666666'),
+('Maya Indah',        'maya@example.com',       '9b8769a4a742959a2d0298c36fb70623f2dfacda8436237df08d8dfd5b37374c', 'customer', '081277777777'),
+('Rizky Maulana',     'rizky@example.com',      '9b8769a4a742959a2d0298c36fb70623f2dfacda8436237df08d8dfd5b37374c', 'customer', '081288888888');
 
 -- ── SEED: Owners ────────────────────────────────────────────
 INSERT INTO owners (user_id, business_name, business_db_name, business_address, business_phone, verified) VALUES
